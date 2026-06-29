@@ -65,7 +65,7 @@
     //  then this will provide a function for the application to 
     //  enter the bootloader from the application (optional)
     #if defined(PROGRAMMABLE_WITH_USB_HID_BOOTLOADER)
-    9    #define EnterBootloader() __asm__("goto 0x400")
+        #define EnterBootloader() __asm__("goto 0x400")
     #endif   
 
     /*******************************************************************/
@@ -80,23 +80,25 @@
     //These definitions will tell the main() function which board is
     //  currently selected.  This will allow the application to add
     //  the correct configuration bits as wells use the correct
-    //  initialization functions for the board.  These defitions are only
+    //  initialization functions for the board.  These definitions are only
     //  required in the stack provided demos.  They are not required in
     //  final application design.
     #define DEMO_BOARD PIC24FJ64GB004_PIM
     #define EXPLORER_16
     #define PIC24FJ64GB004_PIM
     #define CLOCK_FREQ 32000000
-    
+   	#define GetSystemClock()		(CLOCK_FREQ)      // Hz
+		#define GetInstructionClock()	(GetSystemClock()/2)
+		#define GetPeripheralClock()	GetInstructionClock()
+//   	#define FCY GetInstructionClock()		// per delay
+
 
     /** LED ************************************************************/
     #define mInitAllLEDs()      LATA &= 0xffef; TRISA &= 0xffef; LATB &= 0xfff3; TRISB &= 0xfff3; //RA4, RB2 RB3
     
     #define mLED_1              LATBbits.LATB2
-//    #define mLED_2              LATBbits.LATB3		// uso i due estremi sul pcb! ossia non questo
-//    #define mLED_3              LATAbits.LATA4
-    #define mLED_3              LATBbits.LATB3		
-    #define mLED_2              LATAbits.LATA4
+    #define mLED_2              LATBbits.LATB3		// uso i due estremi sul pcb! ossia non questo
+    #define mLED_3              LATAbits.LATA4
     #define mLED_4              1 //LATAbits.LATA9
 
     #define mGetLED_1()         (mLED_1)
@@ -115,8 +117,8 @@
     #define mLED_4_Off()         
     
     #define mLED_1_Toggle()     __builtin_btg(&LATB,2)			// ^= 0x0004;
-    #define mLED_3_Toggle()     __builtin_btg(&LATB,3)			// ^= 0x0008; v.sopra
-    #define mLED_2_Toggle()     __builtin_btg(&LATA,4)			// ^= 0x0010;
+    #define mLED_2_Toggle()     __builtin_btg(&LATB,3)			// ^= 0x0008; v.sopra
+    #define mLED_3_Toggle()     __builtin_btg(&LATA,4)			// ^= 0x0010;
     #define mLED_4_Toggle()      
     
     /** SWITCH *********************************************************/
@@ -126,7 +128,6 @@
     #define m_Puls1Bit					BUTTON0_IO
     #define sw2                 BUTTON1_IO
 
-    #define m_433Bit        		PORTBbits.RB7		//5V tolerant!
 
     /** POT ************************************************************/
     #define mInitPOT()  {}
@@ -149,26 +150,30 @@
 //#define SPI_3MHz
 
 //output port definition
-#define OUTP LATB
-#define LTDI LATBbits.LATB14		//TDI
+#define OUTP LATB			// OCCHIO faccio traslazione!
+#define LTDI LATBbits.LATB13		//TDI
 #define LTCK LATBbits.LATB9		//TCK
 #define LACT mLED_3		//Activity LED
 
 //SPI,PIO output tris definition
 #ifdef USE_SPI
-#define TSDO TRISBbits.TRISB14	//SPI:TDI
-#define TTDI TRISBbits.TRISB14	//PIO:TDI
+#define TSDO TRISBbits.TRISB13	//SPI:TDI
+#define TTDI TRISBbits.TRISB13	//PIO:TDI
 #define TSCK TRISBbits.TRISB9	//SPI:TCK
 #define TTCK TRISBbits.TRISB9	//PIO:TCK
 #endif
 
+// in teoria (sullo schema 18F45K50) ci sono anche nCE e nCS... che però qua non vedo 
+// CS = RB8 lo uso come TMS; 
+// per gli altri per ora uso nCE=RB0 e nCS=RB1 (ossia PGEx, verificare
+
 //input tris definitions for PIO
-#define TTDO TRISBbits.TRISB4	//JTAG:TDO
-#define TADO TRISBbits.TRISB5	//AS:ASDO
+#define TTDO TRISBbits.TRISB14	//JTAG:TDO
+#define TADO TRISBbits.TRISB14	//AS:ASDO
 
 //input port definitions
-#define PTDO PORTBbits.RB4		//JTAG:TDO
-#define PADO PORTBbits.RB5		//AS:ASDO
+#define PTDO PORTBbits.RB14		//JTAG:TDO
+#define PADO PORTBbits.RB14		//AS:ASDO
     
 
 #endif  //HARDWARE_PROFILE_PIC24FJ64GB004_PIM_H

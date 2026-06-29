@@ -10,8 +10,8 @@
 
 /******** Macros ********/
 
-#define ChangeSPI() { TTDI=1; TTCK=1; SPI1STATbits.SPIEN=1; TSCK=0; TSDO=0;}
-#define ChangePIO() { TSDO=1; TSCK=1; SPI1STATbits.SPIEN=0; TTCK=0; TTDI=0;}
+#define ChangeSPI() { TTDI=1; TTCK=1;   PPSInput(PPS_SDI1, PPS_RP14); PPSOutput(PPS_SCK1,PPS_RP9); PPSOutput(PPS_SDO1,PPS_RP13);   SPI1STATbits.SPIEN=1; TSCK=0; TSDO=0;}		// (ev. PPS
+#define ChangePIO() { TSDO=1; TSCK=1; SPI1STATbits.SPIEN=0;   PPSInput(PPS_SDI1, PPS_VSS); PPSOutput(PPS_NULL,PPS_RP9); PPSOutput(PPS_NULL,PPS_RP13);   TTCK=0; TTDI=0;}
 
 #ifdef ENABLE_PPB
   #if USB_PING_PONG_MODE==USB_PING_PONG__FULL_PING_PONG
@@ -25,7 +25,7 @@
 #define bitmask(byte,i) ((byte)&(1<<(i)))
 
 //JTAG operation macro functions
-#define tck() {LTCK=1; Nop(); LTCK=0;}
+#define tck() {LTCK=1; Nop();  Nop();  LTCK=0;}
 
 // 7cycles/bit -> 1.71MHz
 #define JTAG_Write(a) {\
@@ -66,9 +66,11 @@
 }
 
 #ifdef SPI_12MHz
-	#define SPI_Wait()
+//	#define SPI_Wait()
+	#define SPI_Wait() {while(SPI1STATbits.SPITBF || !SPI1STATbits.SPIRBF) ClrWdt();}			// (VERIFICARE!
 #else
-	#define SPI_Wait() {while(!SPI1STATbits.SPITBF && !!SPI1STATbits.SPIRBF) {};}			// VERIFICARE!
+	#define SPI_Wait() {while(SPI1STATbits.SPITBF || !SPI1STATbits.SPIRBF) ClrWdt();}			// (VERIFICARE!
+//while ((SPIFLASH_SPISTATbits.SPITBF == 1) || (SPIFLASH_SPISTATbits.SPIRBF == 0))
 #endif
 
 //In FIFO Functions
@@ -78,10 +80,10 @@
 }
 
 #define dequeue(a,c){\
-	if(fifo_rp<=(255-(c)+1)){\
+	if(fifo_rp <= (255-(c)+1)){\
 		memcpy((void*)(a),(void*)&InFIFO[fifo_rp],c);\
 		fifo_rp+=(c);\
-	}else{\
+	} else {\
 		acc1=255-fifo_rp+1;\
 		memcpy((void*)(a),(void*)&InFIFO[fifo_rp],acc1);\
 		memcpy((void*)((a)+acc1),(void*)InFIFO,(c)-acc1);\

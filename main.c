@@ -54,7 +54,7 @@
 #pragma config DSSWEN = OFF             // DSEN Bit Enable (Deep Sleep operation is always disabled)
 #pragma config PLLDIV = DISABLED        // USB 96 MHz PLL Prescaler Select bits (PLL Disabled)
 #pragma config I2C1SEL = DISABLE        // Alternate I2C1 enable bit (I2C1 uses SCL1 and SDA1 pins)
-#pragma config IOL1WAY = ON             // PPS IOLOCK Set Only Once Enable bit (Once set, the IOLOCK bit cannot be cleared)
+#pragma config IOL1WAY = OFF            // PPS IOLOCK Set Only Once Enable bit (Once set, the IOLOCK bit cannot be cleared)
 
 // CONFIG3
 #pragma config WPFP = WPFP127           // Write Protection Flash Page Segment Boundary (Page 127 (0x1FC00))
@@ -149,7 +149,7 @@ WORD CounterL;
 
 volatile BYTE second,second_2,Timer1,Timer100;
 
-const static const char USB_BL_C[]="$Id:USB_BLASTER.C Ver 2.0.1 - 28/6/26";
+const static const char USB_BL_C[]="$Id:USB_BLASTER.C Ver 2.0.1 - 29/6/26";
 // was: a day past the Pope and Manuela the rat :)
 
 
@@ -190,6 +190,7 @@ void YourLowPriorityISRCode();
 
 
 //#define BL_ENTRY_BUTTON PORTEbits.RE0 //button 1...
+ //USARE RB4 per entrare bootloader, = Buzzer			 su AndroidGSP / SkyUSB24
 
 //If defined, the reset vector pointer and boot mode entry delay
 // value will be stored in the device's vector space at addresses 0x100 and 0x102
@@ -283,12 +284,7 @@ void __attribute__ (( interrupt, shadow, no_auto_psv )) _T4Interrupt(void) {
  *
  * Note:            None
  *******************************************************************/
-#if defined(__18CXX)
-void main(void)
-#else
-int main(void)
-#endif
-{   
+int main(void) {   
 
   InitializeSystem();
 	RCON=0;		// IMPORTANTE per bootloader!
@@ -315,173 +311,190 @@ int main(void)
         				  // execute (~50 instruction cycles) before it returns.
     #endif
     				  
-
 	
 		// Application-specific tasks.
 		// Application related code may be added here, or in the ProcessIO() function.
     ProcessIO();        
 
-
-		//Check and transmit queued data
-		if(!USBHandleBusy(USBInHandle0)) {
-			acc0=fifo_used();
-			if(62<=acc0) {		//send filled packet to host
-				dequeue(InPacket[0]+2,62);
-				mUSBTxOnePacket(USBInHandle0,1,InPacket[0],2+62);
-				IFS0bits.T2IF=1;	//schedule to send indicator			
-				} 
-			else if(acc0) {			//send non-filled packet to host
-				dequeue(InPacket[0]+2,acc0);
-				mUSBTxOnePacket(USBInHandle0,1,InPacket[0],2+acc0);
-				IFS0bits.T2IF=1;	//schedule sending indicator
-				}
-			else if(IFS0bits.T2IF) {	//send packet indicator
-				TMR2=5536;	//(65536-5536)/(12000/2)=10ms
-				IFS0bits.T2IF=0;
-				mUSBTxOnePacket(USBInHandle0,1,InPacket[0],2);
-				}
-			}
-         //Check to see if data has arrive.
-		if(!recv_byte) {
-			if(PPB==0) {	//even packet or no ping-pong
-				if(!USBHandleBusy(USBOutHandle0)) {
-					recv_byte=USBHandleGetLength(USBOutHandle0);
-					//p=USBHandleGetAddr(USBOutHandle0);
-					bufptr=0;
-					received=1;
-					}
-				}
-			else {		//odd packet
-				if(!USBHandleBusy(USBOutHandle1)) {
-					recv_byte=USBHandleGetLength(USBOutHandle1);
-					//p=USBHandleGetAddr(USBOutHandle1);
-					bufptr=64;
-					received=1;
-					}
-				}
-			}
-		if(fifo_able() < recv_byte) 
-			continue;	//FIFO Full check
-
-		if(recv_byte) {
+    if((USBDeviceState < CONFIGURED_STATE) || (USBSuspendControl==1)) {
+			//Something to do in not connected to host.
 			LACT=0;
-			do{
-				if(jtag_byte) {
-					#ifdef USE_SPI
-					ChangeSPI();
-					acc0=bitreverse[OutPacket[0][bufptr++]];
-					#endif
-					if(!read) {
-						do {
-							#ifdef USE_SPI
-							SPI1BUF=acc0;
-							acc0=bitreverse[OutPacket[0][bufptr++]];
-							SPI_Wait();
-							#else
-							acc0=OutPacket[0][bufptr++];
-							JTAG_Write(acc0);
-							#endif
-							jtag_byte--;
-							recv_byte--;
-						} while(jtag_byte && recv_byte);
+			}
+		else {
+			//Check and transmit queued data
+			if(!USBHandleBusy(USBInHandle0)) {
+				acc0=fifo_used();
+				if(62<=acc0) {		//send filled packet to host
+					dequeue(InPacket[0]+2,62);
+					mUSBTxOnePacket(USBInHandle0,1,InPacket[0],2+62);
+					IFS0bits.T2IF=1;	//schedule to send indicator			
+//	mLED_1_On();
+					} 
+				else if(acc0) {			//send non-filled packet to host
+					dequeue(InPacket[0]+2,acc0);
+					mUSBTxOnePacket(USBInHandle0,1,InPacket[0],2+acc0);
+					IFS0bits.T2IF=1;	//schedule sending indicator
+	
+//	mLED_1_On();
 					}
-				else {
-						do {
-							#ifdef USE_SPI
-							SPI1BUF=acc0;
-							acc0=bitreverse[OutPacket[0][bufptr++]];
-							SPI_Wait();
-							acc1=bitreverse[SPI1BUF];
-							enqueue(acc1);
-							#else
-							acc0=OutPacket[0][bufptr++];
-							JTAG_RW(acc0,acc1);
-							enqueue(acc1);
-							#endif
-							jtag_byte--;
-							recv_byte--;
-							} while(jtag_byte && recv_byte);
+				else if(IFS0bits.T2IF) {	//send packet indicator
+					PR2=2500;	//(65536-5536)/(12000/2)=10ms  (clock=16000000, prescaler=64 => 250000Hz
+					TMR2=0;
+					IFS0bits.T2IF=0;
+//	mLED_1_Off();
+					mUSBTxOnePacket(USBInHandle0,1,InPacket[0],2);
+					}
+				}
+
+	    //Check to see if data has arrived.
+			if(!recv_byte) {
+				if(PPB==0) {	//even packet or no ping-pong
+					if(!USBHandleBusy(USBOutHandle0)) {
+//	mLED_3_On();
+						recv_byte=USBHandleGetLength(USBOutHandle0);
+						//p=USBHandleGetAddr(USBOutHandle0);
+						bufptr=0;
+						received=1;
 						}
-					#ifdef USE_SPI
-					bufptr--;
-					ChangePIO();
-					#endif
 					}
-				else if(aser_byte) {
-					if(!read) {
+				else {		//odd packet
+					if(!USBHandleBusy(USBOutHandle1)) {
+						recv_byte=USBHandleGetLength(USBOutHandle1);
+						//p=USBHandleGetAddr(USBOutHandle1);
+						bufptr=64;
+						received=1;
+						}
+					}
+				}
+//			if(fifo_able() < recv_byte) 		// tolto GD 29/6/26 se no non va/si blocca su comando ricevuto
+	//			continue;	//FIFO Full check
+
+			if(recv_byte) {
+				LACT=0;
+				do {
+					if(jtag_byte) {
 						#ifdef USE_SPI
 						ChangeSPI();
 						acc0=bitreverse[OutPacket[0][bufptr++]];
 						#endif
-						do {
-							#ifdef USE_SPI
-							SPI1BUF=acc0;
-							acc0=bitreverse[OutPacket[0][bufptr++]];
-							SPI_Wait();
-							#else
-							acc0=OutPacket[0][bufptr++];
-							JTAG_Write(acc0);
-							#endif
-							aser_byte--;
-							recv_byte--;
-							} while(aser_byte && recv_byte);
+						if(!read) {
+							do {
+								#ifdef USE_SPI
+								SPI1BUF=acc0;
+								acc0=bitreverse[OutPacket[0][bufptr++]];
+								SPI_Wait();
+	SPI1BUF; // serve??
+								#else
+								acc0=OutPacket[0][bufptr++];
+								JTAG_Write(acc0);
+								#endif
+								jtag_byte--;
+								recv_byte--;
+								} while(jtag_byte && recv_byte);
+							}
+						else {
+							do {
+								#ifdef USE_SPI
+								SPI1BUF=acc0;
+								acc0=bitreverse[OutPacket[0][bufptr++]];
+								SPI_Wait();
+								acc1=bitreverse[SPI1BUF];
+								enqueue(acc1);
+								#else
+								acc0=OutPacket[0][bufptr++];
+								JTAG_RW(acc0,acc1);
+								enqueue(acc1);
+								#endif
+								jtag_byte--;
+								recv_byte--;
+								} while(jtag_byte && recv_byte);
+							}
 						#ifdef USE_SPI
 						bufptr--;
 						ChangePIO();
 						#endif
-						} 
+						}
+					else if(aser_byte) {
+						if(!read) {
+							#ifdef USE_SPI
+							ChangeSPI();
+							acc0=bitreverse[OutPacket[0][bufptr++]];
+							#endif
+							do {
+								#ifdef USE_SPI
+								SPI1BUF=acc0;
+								acc0=bitreverse[OutPacket[0][bufptr++]];
+								SPI_Wait();
+	SPI1BUF; // serve??
+								#else
+								acc0=OutPacket[0][bufptr++];
+								JTAG_Write(acc0);
+								#endif
+								aser_byte--;
+								recv_byte--;
+								} while(aser_byte && recv_byte);
+							#ifdef USE_SPI
+							bufptr--;
+							ChangePIO();
+							#endif
+							} 
+						else {
+							do {
+								acc0=OutPacket[0][bufptr++];
+								ASer_RW(acc0,acc1);
+								enqueue(acc1);
+								aser_byte--;
+								recv_byte--;
+								} while(aser_byte && recv_byte);
+							}
+						}
 					else {
 						do {
 							acc0=OutPacket[0][bufptr++];
-							ASer_RW(acc0,acc1);
-							enqueue(acc1);
-							aser_byte--;
-							recv_byte--;
-							} while(aser_byte && recv_byte);
+							bitcopy(bitmask(acc0,6),read);
+							if(bitmask(acc0,7)){		//EnterSerialMode
+								LTCK=0;		//bug fix
+								if(OUTP & 0x2 /*0x8*/)	//nCS=1:JTAG
+									jtag_byte=acc0 & 0x3F;
+								else		//nCS=0:ActiveSerial
+									aser_byte=acc0 & 0x3F;
+								recv_byte--;
+								break;
+								}
+							else {			//BitBangMode
+								WORD outp1=0;
+								outp1 |= (acc0 & 0b1100) >> 2;		// RC3..2 => RB1..0
+								outp1 |= (acc0 & 0b0001) ? 0b0000001000000000 : 0;		// RC0 => RB9
+								outp1 |= (acc0 & 0b0010) ? 0b0000000100000000 : 0;		// RC1 => RB8
+								outp1 |= (acc0 & 0b10010000) ? 0b0010000000000000 : 0;		// RC4/7 => RB13
+								OUTP=outp1;
+								if(read) {
+									acc1=0;
+									if(PADO)
+										acc1 |= 0x02;
+									if(PTDO) 
+										acc1 |= 0x01;
+									enqueue(acc1);
+									}
+								recv_byte--;
+								}
+							}	while(recv_byte);
 						}
-					}
-				else {
-					do {
-						acc0=OutPacket[0][bufptr++];
-						bitcopy(bitmask(acc0,6),read);
-						if(bitmask(acc0,7)){		//EnterSerialMode
-							LTCK=0;		//bug fix
-							if(OUTP & 0x8){	//nCS=1:JTAG
-								jtag_byte=acc0 & 0x3F;
-								}
-							else{		//nCS=0:ActiveSerial
-								aser_byte=acc0 & 0x3F;
-								}
-							recv_byte--;
-							break;
-							}
-						else {			//BitBangMode
-							OUTP=acc0;
-							if(read) {
-								acc1=0;
-								if(PADO)
-									acc1 |= 0x02;
-								if(PTDO) 
-									acc1 |= 0x01;
-								enqueue(acc1);
-								}
-							recv_byte--;
-							}
-						}	while(recv_byte);
-					}
-				} while(recv_byte);
-			}
-		if(received && (!recv_byte)) {
-			LACT=1;
-			if(PPB==0) {
-				mUSBRxOnePacket(USBOutHandle0,2,OutPacket[0],64);
-				TogglePPB();
+					} while(recv_byte);
 				}
-			else{
-				mUSBRxOnePacket(USBOutHandle1,2,OutPacket[1],64);
-				TogglePPB();
+
+			if(received && !recv_byte) {
+				LACT=1;
+				if(PPB==0) {
+					mUSBRxOnePacket(USBOutHandle0,2,OutPacket[0],64);
+					TogglePPB();
+					}
+				else{
+					mUSBRxOnePacket(USBOutHandle1,2,OutPacket[1],64);
+					TogglePPB();
+					}
+				received=0;
 				}
-			received=0;
 			}
 
 		handle_events();
@@ -577,10 +590,10 @@ static void InitializeSystem(void) {
 
 	// LEDs
 //	LED0_TRIS = 0;
-	TRISA=0b0000000000000000;			// led, rele
-	TRISB=0b0100000010100000;			// led, INT, MRF
+	TRISA=0b0000000000000000;			// 
+	TRISB=0b0000000000000000;			// 
 
-	ODCB=0b0000000000000000;			// ev. open collector per I2C...
+	ODCB =0b0000000000000000;			// ev. open collector per I2C...
 
 
 // Default all pins to digital
@@ -593,16 +606,12 @@ static void InitializeSystem(void) {
 
 
 	LATA=0b0000000000000000;			//  
-	LATB=0b0000000100000000;			//  CS=1, Importante!
-
-	CNPU1bits.CN11PUE=1;			// pull-up; sw2
-	CNPU2bits.CN23PUE=1;			// INT
-	//CNPU2bits.CN12PUE=1;			// MISO? mettere?
-	CNPU2bits.CN27PUE=1;			// sw1
-	
+	LATB=0b0000000000000000;			//  
 
 
 
+
+#ifdef USE_SPI
 // Unlock Registers
  PPSUnLock;
 
@@ -628,7 +637,7 @@ static void InitializeSystem(void) {
 
 // Lock Registers
  PPSLock;
-
+#endif
 
 
 		#if defined(__PIC24F__)
@@ -662,7 +671,7 @@ static void InitializeSystem(void) {
     
   USBDeviceInit();	//usb_device.c.  Initializes USB module SFRs and firmware variables to known states.
 
-  DataEEInit();
+//  DataEEInit();
   dataEEFlags.val = 0;
   Nop();
   Nop();
@@ -696,17 +705,6 @@ void UserInit(void) {
 	ClrWdt();
 
 
-  //Initialize all of the LED pins
-  mInitAllLEDs();
-  
-  //Initialize all of the push buttons
-  mInitAllSwitches();
-  
-
-
-  //initialize the variable holding the handle for the last transmission
-
-
 	__delay_ms(25);		// per EEprom ecc, PRIMA DI IRQ!
 	ClrWdt();
 	__delay_ms(25);		// (occhio a watchdog!)
@@ -718,14 +716,13 @@ void UserInit(void) {
 
 
 
-
 	//EnablePullUpCN1;			// pull-up , non lo trova, ott 2010...
 	CNPU1bits.CN11PUE = 1;		//puls2
 	CNPU2bits.CN27PUE = 1;		//puls.
-	CNPU2bits.CN23PUE = 0 /* 1 SU MODULI 2016-17 dà problemi !£$%@#*/ ;		//radio (tanto per..
 
 
-
+//	CNPU2bits.CN23PUE=1;			// INT
+	//CNPU2bits.CN12PUE=1;			// MISO? mettere?
 
 
 	//IO Initialize
@@ -739,29 +736,34 @@ void UserInit(void) {
 	TTDO=1;
 	TADO=1;
 
+  //Initialize all of the LED pins
+  mInitAllLEDs();
+  
+  //Initialize all of the push buttons
+  mInitAllSwitches();
+  
 	//Initial value setup
-	OUTP=0b0001111000000000;
+	OUTP=0b0110001100000000;		// TMS,nCE,TDI,nCS
 
 	//Peripheral setup
-	T2CON=0b1000000000000000;		//On,Fcy/2
+	T2CON=0b1000000000100000;		//On,16bit,Fcy/64
 	IEC0bits.T2IE=0;	//Polling
 
-    #define PROPER_SPICON1  (0x0013 | 0x0120)   /* 1:1 primary prescaler, 4:1 secondary prescale, CKE=1, MASTER mode */
+//    #define PROPER_SPICON1  (0x0013 | 0x0120)   /* 1:1 primary prescaler, 4:1 secondary prescale, CKE=1, MASTER mode */
 //    #define PROPER_SPICON1  (0x21)      /* SSPEN bit is set, SPI in master mode, FOSC/16, IDLE state is low level */
 // 4MHz pare, 21.5.17
 
 //   SPI1CON1 = PROPER_SPICON1; // See PROPER_SPICON1 definition above
-// FINIRE!
 
 
 	#ifdef USE_SPI
-	SPI1STAT=0b0100000000000000;		//SMP=0,CKE=1;
+	SPI1STAT=0b0000000000000000;		//
 	#ifdef SPI_3MHz
-	SPI1CON1=0b0000000100000000;		//Fspi=3MHz
+	SPI1CON1=0b0000000100101111;		//SMP=0,CKE=1; Master, 8bit; Fspi=3MHz  IN EFFETTI 3.2  16/5
 	SPI1CON2=0b0000000000000000;
 	#endif
 	#ifdef SPI_12MHz
-	SPI1CON1=0b0000000000000000;		//Fspi=12MHz
+	SPI1CON1=0b0000000100111011;		//SMP=0,CKE=1; Master, 8bit; Fspi=12MHz  IN EFFETTI 8   16/2
 	SPI1CON2=0b0000000000000000;
 	#endif
 	ChangePIO();
@@ -775,8 +777,6 @@ void UserInit(void) {
 
 
 	}	//end UserInit
-
-
 
 
 
@@ -882,7 +882,11 @@ void BlinkUSBStatus(void) {
 //	    	mLED_1_Off();
 				}
 			else {
+
    	    mLED_2_On();
+
+
+
 //	    	mLED_1_Off();
 				}
 			}
@@ -1126,7 +1130,7 @@ void USBCBCheckOtherReq(void) {
 			return;
 			}
 		if(SetupPkt.bRequest==0x90) {
-			index=(SetupPkt.wIndex<<1) & 0x7E;
+			index=(SetupPkt.wIndex << 1) & 0x7E;
 			ctrl_trf_buf[0]=eeprom_read(index);
 			ctrl_trf_buf[1]=eeprom_read(index+1);
 			}
@@ -1186,8 +1190,9 @@ void USBCBStdSetDscHandler(void) {
  *******************************************************************/
 void USBCBInitEP(void) {
 
-  USBEnableEndpoint(1,USB_IN_ENABLED|USB_HANDSHAKE_ENABLED|USB_DISALLOW_SETUP);
-  USBEnableEndpoint(2,USB_OUT_ENABLED|USB_HANDSHAKE_ENABLED|USB_DISALLOW_SETUP);
+  USBEnableEndpoint(1,USB_IN_ENABLED | USB_HANDSHAKE_ENABLED | USB_DISALLOW_SETUP);
+  USBEnableEndpoint(2,USB_OUT_ENABLED | USB_HANDSHAKE_ENABLED | USB_DISALLOW_SETUP);
+  //initialize the variable holding the handle for the last transmission
 	USBOutHandle0=0;
 	USBOutHandle1=0;
 	USBInHandle0=0;
@@ -1196,7 +1201,9 @@ void USBCBInitEP(void) {
 	recv_byte=0;
 	jtag_byte=0;
 	aser_byte=0;
-	//TODO: Buffer pointer reset
+	_flags.Val=0;
+	//(TODO: Buffer pointer reset
+	bufptr=0;
 	}
 
 /********************************************************************
@@ -1324,6 +1331,9 @@ void USBCBSendResume(void) {
 
 void UserSetReport_Callback_0(void);            // Prototype for callback function
 
+#if defined(ENABLE_EP0_DATA_RECEIVED_CALLBACK)
+void USBCBEP0DataReceived(void){}
+#endif
 
 
 /*******************************************************************

@@ -64,7 +64,7 @@
 #define IN_FN_PPS_SDI1				RPINR20bits.SDI1R	/* Assign SPI1 Data Input (SDI1) to the corresponding RPn pin*/
 #define IN_FN_PPS_SCK1				RPINR20bits.SCK1R	/* Assign SPI1 Clock Input (SCK1IN) to the corresponding RPn pin*/
 #define IN_FN_PPS_SS1				RPINR21bits.SS1R	/* Assign SPI1 Slave Select Input (SS1IN) to the corresponding RPn pin*/
-			
+		
 
 #define iPPSInput(fn,pin)		fn=pin
 #define PPSInput(fn,pin)		iPPSInput(IN_FN_##fn,IN_PIN_##pin)
@@ -110,7 +110,6 @@
 #define OUT_PIN_PPS_RP23			RPOR11bits.RP23R	/* Assign RP23 as Output Pin */
 #define OUT_PIN_PPS_RP24			RPOR12bits.RP24R	/* Assign RP24 as Output Pin */
 #define OUT_PIN_PPS_RP25			RPOR12bits.RP25R	/* Assign RP25 as Output Pin */
-
 
 #define iPPSOutput(pin,fn)		pin=fn
 #define PPSOutput(fn,pin)		iPPSOutput(OUT_PIN_##pin,OUT_FN_##fn)

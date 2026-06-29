@@ -240,7 +240,7 @@ const BYTE *const USB_CD_Ptr[]= {
   (const BYTE *const )&configDescriptor1
 	};
 
-const  struct { BYTE bLength; BYTE bDscType; WORD string[15]; } sd004 = {
+const  struct { BYTE bLength; BYTE bDscType; WORD string[16]; } sd004 = {
 	sizeof(sd004),USB_DESCRIPTOR_STRING,
 	{'U','S','B','-','B','l','a','s','t','e','r','2','4',' ','G','D'}
 	};
